@@ -15,7 +15,7 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-INSTALL_DIR="$HOME/agent-zero"
+INSTALL_DIR="$HOME/zero"
 PORT=5000
 
 banner() {
