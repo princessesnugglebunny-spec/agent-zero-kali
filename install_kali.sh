@@ -2,8 +2,9 @@
 # ============================================================
 #  Agent Zero - Kali Linux Installer (No Docker Required)
 #  Compatible with Python 3.13 (Kali default)
-#  Default model: Claude claude-sonnet-4-5
+#  Default model: OpenRouter openrouter/free
 #  Auto-starts on http://localhost:5000
+#  Installs a lightweight browser and configures auto-open on login
 #  BULLETPROOF: Installs ALL dependencies automatically
 # ============================================================
 
@@ -21,8 +22,8 @@ banner() {
   echo -e "${CYAN}"
   echo "  ╔══════════════════════════════════════════════╗"
   echo "  ║     Agent Zero × Kali Linux Setup            ║"
-  echo "  ║     Default Model: Claude claude-sonnet-4-5  ║"
-  echo "  ║     Python 3.13 Compatible                   ║"
+  echo "  ║     Default Model: OpenRouter openrouter/free ║"
+  echo "  ║     Python 3.13 Compatible (no venv)         ║"
   echo "  ╚══════════════════════════════════════════════╝"
   echo -e "${NC}"
 }
@@ -56,16 +57,14 @@ git clone https://github.com/agent0ai/agent-zero.git "$INSTALL_DIR"
 
 cd "$INSTALL_DIR"
 
-# ── 3. Virtual environment ─────────────────────────────────
-log "Creating Python virtual environment..."
-rm -rf .venv
-$PYTHON -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip setuptools wheel -q
+# ── 3. Use system Python (no virtual environment) ─────────
+log "Using system Python (no virtualenv). Packages will be installed for the user."
+pip_cmd="$PYTHON -m pip"
+$pip_cmd install --user --upgrade pip setuptools wheel -q
 
 # ── 4. Install Agent Zero's own requirements first ────────
 log "Installing Agent Zero's own requirements..."
-pip install -r requirements.txt --ignore-requires-python -q 2>&1 | grep -E "ERROR|Successfully|error" || true
+$pip_cmd install --user -r requirements.txt --ignore-requires-python -q 2>&1 | grep -E "ERROR|Successfully|error" || true
 
 # ── 5. Install ALL additional required packages ───────────
 log "Installing all additional required packages..."
@@ -140,7 +139,7 @@ PACKAGES=(
 
 FAILED=()
 for pkg in "${PACKAGES[@]}"; do
-  pip install "$pkg" --ignore-requires-python -q 2>/dev/null || {
+  $pip_cmd install --user "$pkg" --ignore-requires-python -q 2>/dev/null || {
     warn "Failed to install $pkg — skipping"
     FAILED+=("$pkg")
   }
@@ -152,36 +151,36 @@ fi
 
 # ── 6. Install kokoro without heavy deps ──────────────────
 log "Installing kokoro (TTS)..."
-pip install kokoro --no-deps -q 2>/dev/null || warn "kokoro skipped — voice disabled (non-fatal)"
+$pip_cmd install --user kokoro --no-deps -q 2>/dev/null || warn "kokoro skipped — voice disabled (non-fatal)"
 
 # ── 7. Playwright ─────────────────────────────────────────
 log "Installing Playwright..."
-pip install playwright -q 2>/dev/null
+$pip_cmd install --user playwright -q 2>/dev/null
 playwright install chromium 2>/dev/null || warn "Playwright chromium skipped (non-fatal)"
 
-# ── 8. Claude defaults patch ──────────────────────────────
-log "Installing Claude defaults patch..."
+# ── 8. Defaults patch (OpenRouter) ────────────────────────
+log "Installing default model patch (OpenRouter)..."
 cat > "$INSTALL_DIR/initialize_claude_patch.py" << 'PYEOF'
 """
 initialize_claude_patch.py
-Forces Claude claude-sonnet-4-5 as the default model.
+Forces OpenRouter openrouter/free as the default model.
 Auto-injected by install_kali.sh
 """
 import os
 
-def apply_claude_defaults():
+def apply_default_model_envs():
     defaults = {
-        "A0_CHAT_MODEL_PROVIDER":    "anthropic",
-        "A0_CHAT_MODEL_NAME":        "claude-sonnet-4-5",
-        "A0_UTILITY_MODEL_PROVIDER": "anthropic",
-        "A0_UTILITY_MODEL_NAME":     "claude-sonnet-4-5",
+        "A0_CHAT_MODEL_PROVIDER":    "openrouter",
+        "A0_CHAT_MODEL_NAME":        "openrouter/free",
+        "A0_UTILITY_MODEL_PROVIDER": "openrouter",
+        "A0_UTILITY_MODEL_NAME":     "openrouter/free",
         "A0_EMBED_MODEL_PROVIDER":   "huggingface",
         "A0_EMBED_MODEL_NAME":       "sentence-transformers/all-MiniLM-L6-v2",
     }
     for key, value in defaults.items():
         os.environ.setdefault(key, value)
 
-apply_claude_defaults()
+apply_default_model_envs()
 PYEOF
 
 # Patch initialize.py
@@ -196,33 +195,35 @@ else
   log "initialize.py already patched."
 fi
 
-# ── 9. Anthropic API key ──────────────────────────────────
+# ── 9. OpenRouter API key ─────────────────────────────────
 echo ""
-echo -e "${BOLD}${CYAN}[?] Enter your Anthropic API key (starts with sk-ant-...):${NC}"
-read -r -s ANTHROPIC_KEY
+echo -e "${BOLD}${CYAN}[?] Enter your OpenRouter API key (optional, leave blank if you don't have one):${NC}"
+read -r -s OPENROUTER_KEY
 echo ""
 
 # ── 10. Write .env ────────────────────────────────────────
 log "Writing .env configuration..."
 cat > "$INSTALL_DIR/.env" << EOF
-# Anthropic
-API_KEY_ANTHROPIC=${ANTHROPIC_KEY}
-ANTHROPIC_API_KEY=${ANTHROPIC_KEY}
+# OpenRouter
+API_KEY_OPENROUTER=${OPENROUTER_KEY}
+OPENROUTER_API_KEY=${OPENROUTER_KEY}
 
 # Other providers (optional)
 API_KEY_OPENAI=
 API_KEY_GROQ=
 API_KEY_GOOGLE=
+API_KEY_ANTHROPIC=
+ANTHROPIC_API_KEY=
 
 # Web UI
 WEB_UI_PORT=${PORT}
 WEB_UI_HOST=127.0.0.1
 
 # Default model
-A0_CHAT_MODEL_PROVIDER=anthropic
-A0_CHAT_MODEL_NAME=claude-sonnet-4-5
-A0_UTILITY_MODEL_PROVIDER=anthropic
-A0_UTILITY_MODEL_NAME=claude-sonnet-4-5
+A0_CHAT_MODEL_PROVIDER=openrouter
+A0_CHAT_MODEL_NAME=openrouter/free
+A0_UTILITY_MODEL_PROVIDER=openrouter
+A0_UTILITY_MODEL_NAME=openrouter/free
 A0_EMBED_MODEL_PROVIDER=huggingface
 A0_EMBED_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
 EOF
@@ -231,9 +232,10 @@ EOF
 log "Writing launcher..."
 cat > "$INSTALL_DIR/start.sh" << LAUNCHER
 #!/bin/bash
-cd "\$(dirname "\$0")"
-source .venv/bin/activate
+cd "$(dirname "$0")"
+# No virtualenv; use system python and user site-packages
 set -a; source .env; set +a
+export PATH="${HOME}/.local/bin:$PATH"
 echo ""
 echo -e "\033[0;36m  Agent Zero starting..."
 echo -e "  Browser UI : http://localhost:${PORT}"
@@ -242,6 +244,63 @@ echo ""
 python run_ui.py --port ${PORT} --host 127.0.0.1
 LAUNCHER
 chmod +x "$INSTALL_DIR/start.sh"
+
+# ── 11b. Create a small helper script to open the browser after UI is up ──
+cat > "$INSTALL_DIR/open_browser.sh" << 'BOPEN'
+#!/bin/bash
+# Wait for Agent Zero to be available, then open the browser (user session)
+PORT=${PORT}
+URL="http://localhost:${PORT}"
+# Wait up to 60 seconds for the service
+for i in {1..60}; do
+  if curl -sSf "$URL" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+# Prefer chromium if available, fall back to xdg-open
+if command -v chromium >/dev/null 2>&1; then
+  chromium --new-window "$URL" &>/dev/null &
+elif command -v xdg-open >/dev/null 2>&1; then
+  xdg-open "$URL" &>/dev/null &
+fi
+BOPEN
+chmod +x "$INSTALL_DIR/open_browser.sh"
+
+# ── 11c. Create desktop autostart so the browser opens when a user logs in graphically ──
+AUTOSTART_DIR="$HOME/.config/autostart"
+mkdir -p "$AUTOSTART_DIR"
+cat > "$AUTOSTART_DIR/agent-zero-browser.desktop" << ADO
+[Desktop Entry]
+Type=Application
+Name=Agent Zero Browser
+Exec=$INSTALL_DIR/open_browser.sh
+X-GNOME-Autostart-enabled=true
+NoDisplay=false
+Ado
+
+# ── 11d. Create systemd service to run Agent Zero server on boot ──
+SERVICE_FILE="/etc/systemd/system/agent-zero.service"
+sudo tee "$SERVICE_FILE" > /dev/null << SVC
+[Unit]
+Description=Agent Zero web UI
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$INSTALL_DIR
+Environment=PATH=$HOME/.local/bin:/usr/bin:/bin
+ExecStart=$INSTALL_DIR/start.sh
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+SVC
+
+log "Reloading systemd and enabling Agent Zero service (requires sudo)..."
+sudo systemctl daemon-reload
+sudo systemctl enable --now agent-zero.service || warn "Could not enable system service (you may need sudo)."
 
 # ── 12. Tailscale ─────────────────────────────────────────
 echo ""
@@ -260,7 +319,7 @@ fi
 echo ""
 echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════╗"
 echo -e "║   ✅  Installation Complete!              ║"
-echo -e "╚══════════════════════════════════════════╝${NC}"
+echo -e "╚════════════════════════════════════════╝${NC}"
 echo ""
 echo -e " ${CYAN}Start Agent Zero:${NC}"
 echo -e "   cd ~/agent-zero && ./start.sh"
@@ -269,7 +328,7 @@ echo -e " ${CYAN}Open in browser:${NC}"
 echo -e "   http://localhost:${PORT}"
 echo ""
 echo -e " ${CYAN}CLI mode (no browser):${NC}"
-echo -e "   cd ~/agent-zero && source .venv/bin/activate && python run_cli.py"
+echo -e "   cd ~/agent-zero && python run_cli.py"
 echo ""
-echo -e " ${YELLOW}Default model: Claude claude-sonnet-4-5${NC}"
+echo -e " ${YELLOW}Default model: OpenRouter openrouter/free${NC}"
 echo ""
