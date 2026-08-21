@@ -60,11 +60,11 @@ cd "$INSTALL_DIR"
 # ── 3. Use system Python (no virtual environment) ─────────
 log "Using system Python (no virtualenv). Packages will be installed for the user."
 pip_cmd="$PYTHON -m pip"
-$pip_cmd install --user --upgrade pip setuptools wheel -q
+$pip_cmd install --user --upgrade pip setuptools wheel -q --break-system-packages
 
 # ── 4. Install Agent Zero's own requirements first ────────
 log "Installing Agent Zero's own requirements..."
-$pip_cmd install --user -r requirements.txt --ignore-requires-python -q 2>&1 | grep -E "ERROR|Successfully|error" || true
+$pip_cmd install --user -r requirements.txt --ignore-requires-python -q 2 --break-system-packages>&1 | grep -E "ERROR|Successfully|error" || true
 
 # ── 5. Install ALL additional required packages ───────────
 log "Installing all additional required packages..."
