@@ -6,6 +6,7 @@
 #  Auto-starts on http://localhost:5000
 #  Installs a lightweight browser and configures auto-open on login
 #  BULLETPROOF: Installs ALL dependencies automatically
+#  NOTE: This installer is restricted to 32-bit systems only.
 # ============================================================
 
 RED='\033[0;31m'
@@ -32,7 +33,17 @@ log()    { echo -e "${GREEN}[+]${NC} $1"; }
 warn()   { echo -e "${YELLOW}[!]${NC} $1"; }
 err()    { echo -e "${RED}[✗]${NC} $1"; }
 
+# Determine script directory (so we can read requirements.txt colocated with this script)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &>/dev/null && pwd )"
+
 banner
+
+# Ensure 32-bit system
+ARCH_BITS=$(getconf LONG_BIT 2>/dev/null || echo "")
+if [ "$ARCH_BITS" != "32" ]; then
+  err "This installer supports 32-bit systems only. Detected ${ARCH_BITS}-bit architecture. Exiting."
+  exit 1
+fi
 
 # ── 1. System dependencies ─────────────────────────────────
 log "Installing system dependencies..."
@@ -66,87 +77,27 @@ $pip_cmd install --user --upgrade pip setuptools wheel -q --break-system-package
 log "Installing Agent Zero's own requirements..."
 $pip_cmd install --user -r requirements.txt --ignore-requires-python -q 2 --break-system-packages>&1 | grep -E "ERROR|Successfully|error" || true
 
-# ── 5. Install ALL additional required packages ───────────
-log "Installing all additional required packages..."
-PACKAGES=(
-  # Web server
-  "uvicorn[standard]"
-  "uvicorn"
-  "fastapi"
-  "aiohttp"
-  "websockets"
-  "python-socketio"
-  "flask"
-  "flask-basicauth"
-  "flask-socketio"
-  "nest-asyncio"
-  "eventlet"
-  # LLM providers
-  "anthropic"
-  "openai"
-  "litellm"
-  # LangChain full suite
-  "langchain"
-  "langchain-community"
-  "langchain-anthropic"
-  "langchain-openai"
-  "langchain-google-genai"
-  "langchain-groq"
-  "langchain-mistralai"
-  "langchain-chroma"
-  "langchain-ollama"
-  "langchain-huggingface"
-  # Embeddings
-  "sentence-transformers"
-  "chromadb"
-  "faiss-cpu"
-  # Security
-  "cryptography"
-  "paramiko"
-  # Utilities
-  "python-dotenv"
-  "requests"
-  "aiofiles"
-  "GitPython"
-  "simpleeval"
-  "inputimeout"
-  "ansio"
-  # Text processing
-  "beautifulsoup4"
-  "markdownify"
-  "html2text"
-  "pypdf"
-  "Pillow"
-  "tiktoken"
-  "tokenizers"
-  # Data
-  "numpy"
-  "pydantic"
-  "pyyaml"
-  "toml"
-  "regex"
-  # Search & tools
-  "duckduckgo-search"
-  "mcp"
-  "webcolors"
-  "schedule"
-  "rich"
-  "tqdm"
-  "packaging"
-  "annotated-types"
-  "rfc3986"
-)
+# ── 5. Install ALL additional required packages from colocated requirements file ───────────
+REQUIREMENTS_SOURCE="$SCRIPT_DIR/requirements.txt"
+if [ ! -f "$REQUIREMENTS_SOURCE" ]; then
+  warn "Requirements file not found at $REQUIREMENTS_SOURCE — skipping additional package installs."
+else
+  log "Installing all additional required packages from $REQUIREMENTS_SOURCE ..."
+  FAILED=()
+  while IFS= read -r pkg || [ -n "$pkg" ]; do
+    # Skip comments and empty lines
+    case "$pkg" in
+      ''|\#*) continue ;;
+    esac
+    $pip_cmd install --user "$pkg" --ignore-requires-python -q 2>/dev/null || {
+      warn "Failed to install $pkg — skipping"
+      FAILED+=("$pkg")
+    }
+  done < "$REQUIREMENTS_SOURCE"
 
-FAILED=()
-for pkg in "${PACKAGES[@]}"; do
-  $pip_cmd install --user "$pkg" --ignore-requires-python -q 2>/dev/null || {
-    warn "Failed to install $pkg — skipping"
-    FAILED+=("$pkg")
-  }
-done
-
-if [ ${#FAILED[@]} -gt 0 ]; then
-  warn "These packages failed (non-fatal): ${FAILED[*]}"
+  if [ ${#FAILED[@]} -gt 0 ]; then
+    warn "These packages failed (non-fatal): ${FAILED[*]}"
+  fi
 fi
 
 # ── 6. Install kokoro without heavy deps ──────────────────

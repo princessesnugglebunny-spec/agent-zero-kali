@@ -1,0 +1,79 @@
+# Additional Python packages to be installed by install_kali.sh
+# This file is intended for 32-bit systems. Some packages may not have
+# prebuilt wheels for 32-bit and may fail to build — those failures are
+# non-fatal in the installer.
+
+# Web server
+uvicorn[standard]
+uvicorn
+fastapi
+aiohttp
+websockets
+python-socketio
+flask
+flask-basicauth
+flask-socketio
+nest-asyncio
+eventlet
+
+# LLM providers
+anthropic
+openai
+litellm
+
+# LangChain full suite
+langchain
+langchain-community
+langchain-anthropic
+langchain-openai
+langchain-google-genai
+langchain-groq
+langchain-mistralai
+langchain-chroma
+langchain-ollama
+langchain-huggingface
+
+# Embeddings
+sentence-transformers
+chromadb
+faiss-cpu
+
+# Security
+cryptography
+paramiko
+
+# Utilities
+python-dotenv
+requests
+aiofiles
+GitPython
+simpleeval
+inputimeout
+ansio
+
+# Text processing
+beautifulsoup4
+markdownify
+html2text
+pypdf
+Pillow
+tiktoken
+tokenizers
+
+# Data
+numpy
+pydantic
+pyyaml
+toml
+regex
+
+# Search & tools
+duckduckgo-search
+mcp
+webcolors
+schedule
+rich
+tqdm
+packaging
+annotated-types
+rfc3986
