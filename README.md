@@ -1,5 +1,5 @@
 # Agent Zero — Kali Linux Setup (No Docker)
-### Default model: Claude claude-sonnet-4-5
+### Default model: OpenRouter openrouter/free (embeddings: HuggingFace)
 
 ---
 
@@ -12,11 +12,11 @@ chmod +x install_kali.sh
 # 2. Run it (one command, sets everything up)
 ./install_kali.sh
 
-# 3. Start Agent Zero
-cd ~/agent-zero && ./start.sh
+# 3. Start Agent Zero (manual test)
+cd ~/zero && ./start.sh
 
 # 4. Open browser
-# http://localhost:5000
+http://localhost:5000
 ```
 
 That's it. Nothing else to configure.
@@ -27,16 +27,16 @@ That's it. Nothing else to configure.
 
 | Step | Action |
 |------|--------|
-| 1 | Checks Python 3.11+, installs 3.12 if needed |
-| 2 | Installs system deps (`git`, `chromium`, `build-essential`, etc.) |
-| 3 | Clones Agent Zero from GitHub |
-| 4 | Creates a Python virtual environment |
-| 5 | Installs all Python requirements |
-| 6 | Prompts for your Anthropic API key (stored in `.env`) |
-| 7 | Writes pre-configured `.env` with Claude claude-sonnet-4-5 as default |
-| 8 | Patches `initialize.py` to load Claude defaults |
-| 9 | Creates `start.sh` launcher |
-| 10 | (Optional) Installs systemd user service for auto-start |
+| 1 | Installs system deps (`git`, `chromium`, `build-essential`, etc.) |
+| 2 | Clones Agent Zero from GitHub into ~/zero |
+| 3 | Uses system python3 and installs Python packages to the user site (~/.local) — does NOT create/manage a virtualenv |
+| 4 | Installs Python requirements via `python3 -m pip install --user -r requirements.txt` |
+| 5 | Prompts for an OpenRouter API key (stored in `~/zero/.env`) and writes OpenRouter defaults |
+| 6 | Injects `initialize_claude_patch.py` to set default providers/models (OpenRouter for chat/utility; HuggingFace for embeddings) |
+| 7 | Writes `start.sh` that runs the UI using system python |
+| 8 | Creates a systemd service to start the server at boot (runs as the installing user) and enables it |
+| 9 | Creates a desktop autostart entry that opens the UI in a browser on graphical login |
+| 10 | Optionally installs Tailscale for remote access |
 
 ---
 
@@ -45,8 +45,8 @@ That's it. Nothing else to configure.
 | File | Purpose |
 |------|---------|
 | `install_kali.sh` | Main installer — run this |
-| `example.env` | Pre-filled `.env` template (installer auto-generates the real one) |
-| `initialize_claude_patch.py` | Drop into `~/agent-zero/` — sets Claude as default model |
+| `example.env` | Pre-filled `.env` template (installer auto-generates the real one at `~/zero/.env`) |
+| `initialize_claude_patch.py` | Auto-injected by the installer — sets OpenRouter defaults (chat/utility) and HuggingFace for embeddings |
 
 ---
 
@@ -54,19 +54,17 @@ That's it. Nothing else to configure.
 
 ```bash
 # Clone
-git clone https://github.com/agent0ai/agent-zero.git ~/agent-zero
-cd ~/agent-zero
+git clone https://github.com/agent0ai/agent-zero.git ~/zero
+cd ~/zero
 
-# Virtual env
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+# Install dependencies manually, then install Python packages to user site:
+python3 -m pip install --user -r requirements.txt
 
-# Copy files
-cp /path/to/example.env .env
-# Edit .env and add your API key:
-nano .env   # replace sk-ant-YOUR_KEY_HERE
+# Copy example env and edit:
+cp example.env .env
+nano .env   # add your API keys (OpenRouter key is optional)
 
+# Add the initialize_claude_patch.py file if you want the OpenRouter defaults:
 cp /path/to/initialize_claude_patch.py .
 # Add this line to the TOP of initialize.py:
 # import initialize_claude_patch
@@ -77,49 +75,57 @@ python run_ui.py --port 5000 --host 127.0.0.1
 
 ---
 
-## Changing the model
+## Managing the system service
 
-Edit `~/agent-zero/.env`:
+The installer writes a system-level systemd unit at `/etc/systemd/system/agent-zero.service` that runs the server as the installing user.
+
+Commands:
 
 ```bash
-# To use Claude Opus instead:
-A0_CHAT_MODEL_NAME=claude-opus-4-5
+# Reload units, enable & start the service (requires sudo)
+sudo systemctl daemon-reload
+sudo systemctl enable --now agent-zero.service
 
-# To use a local Ollama model instead:
-A0_CHAT_MODEL_PROVIDER=ollama
-A0_CHAT_MODEL_NAME=llama3
+# Check status & logs
+sudo systemctl status agent-zero.service
+sudo journalctl -u agent-zero.service -f
+
+# To disable and remove:
+sudo systemctl disable --now agent-zero.service
+sudo rm /etc/systemd/system/agent-zero.service
 ```
 
-Or change it live in the Agent Zero web UI under **Settings → Model**.
+Note: enabling the systemd unit and writing `/etc/systemd/system` require sudo. The installer will attempt to run these steps but will warn if it cannot.
+
+If you prefer a per-user service (systemctl --user) instead of a system-level unit, I can switch the installer to create/enable a user unit.
 
 ---
 
-## Notes for ethical hacking use
+## Changing the model or embeddings
 
-- Agent Zero runs with **your user's full permissions** — no Docker sandbox
-- It can execute terminal commands, run scripts, access the filesystem
-- Great for automating recon, running tools (nmap, gobuster, etc.), CTF work
-- **Only use in controlled environments / your own lab**
-- Consider creating a dedicated Kali user with limited permissions for Agent Zero
+Edit `~/zero/.env` to change providers/models. Example:
+
+```bash
+# Use a different chat model/provider
+A0_CHAT_MODEL_PROVIDER=openrouter
+A0_CHAT_MODEL_NAME=openrouter/free
+
+# Use a HuggingFace embedding model (default)
+A0_EMBED_MODEL_PROVIDER=huggingface
+A0_EMBED_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
+```
+
+After editing `.env`, restart the service:
+
+```bash
+sudo systemctl restart agent-zero.service
+```
 
 ---
 
-## Troubleshooting
+## Notes & caveats
 
-**Port already in use:**
-```bash
-# Change port in .env
-WEB_UI_PORT=8080
-# Then restart
-```
-
-**API key errors:**
-```bash
-cat ~/agent-zero/.env  # verify key is set correctly
-```
-
-**Requirements install fails:**
-```bash
-source ~/agent-zero/.venv/bin/activate
-pip install -r requirements.txt --break-system-packages
-```
+- The installer uses the system python3 and installs Python packages to the user site (`~/.local`) — it does not create or manage virtual environments.
+- Browser autolaunch only runs in graphical desktop sessions (the installer creates a `~/.config/autostart` entry). Headless systems can still be accessed via Tailscale or by port-forwarding.
+- Playwright/browser binaries may require additional system libraries on some systems; the installer attempts to install them but may warn if manual steps are required.
+- The installer currently checks for 32-bit architecture and exits on non-32-bit systems. If you want 64-bit support, I can update/remove that check.
