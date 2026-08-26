@@ -142,9 +142,9 @@ def apply_default_model_envs():
         "A0_CHAT_MODEL_NAME":        "openrouter/free",
         "A0_UTILITY_MODEL_PROVIDER": "openrouter",
         "A0_UTILITY_MODEL_NAME":     "openrouter/free",
-        # Set embeddings provider to openrouter as requested (some runtimes may still prefer dedicated embed providers)
-        "A0_EMBED_MODEL_PROVIDER":   "openrouter",
-        "A0_EMBED_MODEL_NAME":       "openrouter/free",
+        # Embeddings left as HuggingFace by default for better semantic embeddings
+        "A0_EMBED_MODEL_PROVIDER":   "huggingface",
+        "A0_EMBED_MODEL_NAME":       "sentence-transformers/all-MiniLM-L6-v2",
     }
     for key, value in defaults.items():
         os.environ.setdefault(key, value)
@@ -193,8 +193,8 @@ A0_CHAT_MODEL_PROVIDER=openrouter
 A0_CHAT_MODEL_NAME=openrouter/free
 A0_UTILITY_MODEL_PROVIDER=openrouter
 A0_UTILITY_MODEL_NAME=openrouter/free
-A0_EMBED_MODEL_PROVIDER=openrouter
-A0_EMBED_MODEL_NAME=openrouter/free
+A0_EMBED_MODEL_PROVIDER=huggingface
+A0_EMBED_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
 EOF
 
 # ── 11. Launcher ──────────────────────────────────────────
