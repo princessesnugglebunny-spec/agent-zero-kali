@@ -50,12 +50,16 @@ log "Installing system dependencies..."
 sudo apt-get update -qq
 sudo apt-get install -y \
   git curl wget build-essential \
-  python3-pip python3-venv python3-dev \
+  python3-pip \
   libssl-dev libffi-dev libsodium-dev \
-  chromium chromium-driver \
+  chromium \
   --no-install-recommends -qq
 
 PYTHON=$(command -v python3)
+if [ -z "$PYTHON" ]; then
+  err "python3 not found on PATH. Please install system python3 and rerun."
+  exit 1
+fi
 log "Using $($PYTHON --version)"
 
 # ── 2. Clone Agent Zero ────────────────────────────────────
@@ -71,11 +75,19 @@ cd "$INSTALL_DIR"
 # ── 3. Use system Python (no virtual environment) ─────────
 log "Using system Python (no virtualenv). Packages will be installed for the user."
 pip_cmd="$PYTHON -m pip"
-$pip_cmd install --user --upgrade pip setuptools wheel -q --break-system-packages
+# Make sure user-level pip and bin dir are available
+$pip_cmd install --user --upgrade pip setuptools wheel -q || true
+
+# Ensure user local bin is on PATH for this script run
+export PATH="$HOME/.local/bin:$PATH"
 
 # ── 4. Install Agent Zero's own requirements first ────────
 log "Installing Agent Zero's own requirements..."
-$pip_cmd install --user -r requirements.txt --ignore-requires-python -q 2 --break-system-packages>&1 | grep -E "ERROR|Successfully|error" || true
+if [ -f "requirements.txt" ]; then
+  $pip_cmd install --user -r requirements.txt --ignore-requires-python -q || warn "Some requirements failed to install (non-fatal)"
+else
+  warn "requirements.txt not found in repo root — skipping package install from it."
+fi
 
 # ── 5. Install ALL additional required packages from colocated requirements file ───────────
 REQUIREMENTS_SOURCE="$SCRIPT_DIR/requirements.txt"
@@ -89,7 +101,7 @@ else
     case "$pkg" in
       ''|\#*) continue ;;
     esac
-    $pip_cmd install --user "$pkg" --ignore-requires-python -q 2>/dev/null || {
+    $pip_cmd install --user "$pkg" --ignore-requires-python -q || {
       warn "Failed to install $pkg — skipping"
       FAILED+=("$pkg")
     }
@@ -106,8 +118,13 @@ $pip_cmd install --user kokoro --no-deps -q 2>/dev/null || warn "kokoro skipped 
 
 # ── 7. Playwright ─────────────────────────────────────────
 log "Installing Playwright..."
-$pip_cmd install --user playwright -q 2>/dev/null
-playwright install chromium 2>/dev/null || warn "Playwright chromium skipped (non-fatal)"
+$pip_cmd install --user playwright -q 2>/dev/null || warn "playwright package install failed (non-fatal)"
+# Try to install browser binaries if playwright exists
+if command -v playwright >/dev/null 2>&1 || [ -d "$HOME/.local/bin" ]; then
+  if [ -x "$HOME/.local/bin/playwright" ] || command -v playwright >/dev/null 2>&1; then
+    playwright install chromium 2>/dev/null || warn "Playwright chromium skipped (non-fatal)"
+  fi
+fi
 
 # ── 8. Defaults patch (OpenRouter) ────────────────────────
 log "Installing default model patch (OpenRouter)..."
@@ -125,8 +142,9 @@ def apply_default_model_envs():
         "A0_CHAT_MODEL_NAME":        "openrouter/free",
         "A0_UTILITY_MODEL_PROVIDER": "openrouter",
         "A0_UTILITY_MODEL_NAME":     "openrouter/free",
-        "A0_EMBED_MODEL_PROVIDER":   "huggingface",
-        "A0_EMBED_MODEL_NAME":       "sentence-transformers/all-MiniLM-L6-v2",
+        # Set embeddings provider to openrouter as requested (some runtimes may still prefer dedicated embed providers)
+        "A0_EMBED_MODEL_PROVIDER":   "openrouter",
+        "A0_EMBED_MODEL_NAME":       "openrouter/free",
     }
     for key, value in defaults.items():
         os.environ.setdefault(key, value)
@@ -134,16 +152,16 @@ def apply_default_model_envs():
 apply_default_model_envs()
 PYEOF
 
-# Patch initialize.py
+# Patch initialize.py (prepend import) if not present
 INIT_FILE="$INSTALL_DIR/initialize.py"
-if ! grep -q "initialize_claude_patch" "$INIT_FILE" 2>/dev/null; then
+if [ -f "$INIT_FILE" ] && ! grep -q "initialize_claude_patch" "$INIT_FILE" 2>/dev/null; then
   TMP=$(mktemp)
   echo "import initialize_claude_patch  # Auto-added by install_kali.sh" > "$TMP"
   cat "$INIT_FILE" >> "$TMP"
   mv "$TMP" "$INIT_FILE"
   log "initialize.py patched."
 else
-  log "initialize.py already patched."
+  log "initialize.py already patched or not present."
 fi
 
 # ── 9. OpenRouter API key ─────────────────────────────────
@@ -175,8 +193,8 @@ A0_CHAT_MODEL_PROVIDER=openrouter
 A0_CHAT_MODEL_NAME=openrouter/free
 A0_UTILITY_MODEL_PROVIDER=openrouter
 A0_UTILITY_MODEL_NAME=openrouter/free
-A0_EMBED_MODEL_PROVIDER=huggingface
-A0_EMBED_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
+A0_EMBED_MODEL_PROVIDER=openrouter
+A0_EMBED_MODEL_NAME=openrouter/free
 EOF
 
 # ── 11. Launcher ──────────────────────────────────────────
@@ -186,7 +204,7 @@ cat > "$INSTALL_DIR/start.sh" << LAUNCHER
 cd "$(dirname "$0")"
 # No virtualenv; use system python and user site-packages
 set -a; source .env; set +a
-export PATH="${HOME}/.local/bin:$PATH"
+export PATH="${HOME}/.local/bin:/usr/bin:/bin:$PATH"
 echo ""
 echo -e "\033[0;36m  Agent Zero starting..."
 echo -e "  Browser UI : http://localhost:${PORT}"
@@ -228,7 +246,7 @@ Name=Agent Zero Browser
 Exec=$INSTALL_DIR/open_browser.sh
 X-GNOME-Autostart-enabled=true
 NoDisplay=false
-Ado
+ADO
 
 # ── 11d. Create systemd service to run Agent Zero server on boot ──
 SERVICE_FILE="/etc/systemd/system/agent-zero.service"
